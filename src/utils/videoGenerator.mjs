@@ -73,7 +73,11 @@ api.interceptors.response.use(
 export async function generateVideoFromImage(imageFile, audioFile = null) {
   try {
     // Step 1: Upload image
-    debug('Uploading image...');
+    debug('Uploading image...', {
+      fileName: imageFile.name,
+      fileSize: imageFile.size,
+      fileType: imageFile.type
+    });
     const imageFormData = new FormData();
     imageFormData.append('file', imageFile);
     
@@ -93,13 +97,19 @@ export async function generateVideoFromImage(imageFile, audioFile = null) {
     // Step 2: Upload audio if provided
     let audioUrl = '';
     if (audioFile) {
-      debug('Uploading audio...');
+      debug('Uploading audio...', {
+        fileSize: audioFile.size,
+        fileType: audioFile.type,
+        duration: audioFile.duration
+      });
       const audioFormData = new FormData();
-      audioFormData.append('file', audioFile);
+      const audioFileName = 'audio.mp3';
+      audioFormData.append('file', audioFile, audioFileName);
       
       const audioResponse = await api.post('/v1/audio', audioFormData, {
         headers: {
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': 'multipart/form-data',
+          'Accept': 'application/json'
         }
       });
       
@@ -133,13 +143,14 @@ export async function generateVideoFromImage(imageFile, audioFile = null) {
     }
     debug('Got job ID:', jobId);
 
-    // Poll for completion
+    // Poll for completion with exponential backoff
     let attempts = 0;
     const maxAttempts = CONFIG.maxPollAttempts;
-    const pollInterval = CONFIG.pollInterval;
+    let pollInterval = CONFIG.pollInterval;
+    const maxPollInterval = CONFIG.maxPollInterval;
     
     while (attempts < maxAttempts) {
-      debug(`Checking project status (attempt ${attempts + 1}/${maxAttempts})...`);
+      debug(`Checking project status (attempt ${attempts + 1}/${maxAttempts}, interval: ${pollInterval}ms)...`);
       const statusResponse = await api.get(`/v1/projects/${jobId}`);
       
       if (statusResponse.data.status === 'Completed') {
@@ -162,24 +173,53 @@ export async function generateVideoFromImage(imageFile, audioFile = null) {
         throw new Error(`Video generation failed: ${statusResponse.data.error || 'Unknown error'}`);
       }
       
-      debug(`Status: ${statusResponse.data.status}, waiting ${pollInterval}ms...`);
+      debug(`Status: ${statusResponse.data.status}, progress: ${statusResponse.data.progress || 0}%, waiting ${pollInterval}ms...`);
       await new Promise(resolve => setTimeout(resolve, pollInterval));
       attempts++;
+      
+      // Increase polling interval with exponential backoff, but cap at maxPollInterval
+      pollInterval = Math.min(pollInterval * 1.5, maxPollInterval);
     }
 
-    throw new Error('Video generation timed out. The video may still be processing - please try again in a few minutes.');
+    const timeoutError = new Error('Video generation timed out');
+    timeoutError.details = {
+      attempts,
+      maxAttempts,
+      totalTime: attempts * pollInterval,
+      jobId
+    };
+    throw timeoutError;
     
   } catch (error) {
-    debug('Error in video generation:', error);
+    debug('Error in video generation:', {
+      message: error.message,
+      details: error.details,
+      response: error.response?.data,
+      status: error.response?.status
+    });
     
+    // Enhance error messages with more context
     if (error.message === 'Network Error') {
-      throw new Error('A network error occurred. Please check your internet connection and try again.');
+      throw new Error('Network error occurred while generating video. Please check your internet connection and try again.');
     }
     
     if (error.response?.status === 401) {
-      throw new Error('Invalid API key');
+      throw new Error('API authentication failed. Please check your Hedra API key.');
     }
     
-    throw error;
+    if (error.response?.status === 413) {
+      throw new Error('File size too large. Please use a smaller image or audio file.');
+    }
+    
+    if (error.response?.status === 429) {
+      throw new Error('Too many requests. Please wait a moment before trying again.');
+    }
+    
+    // Include job ID in timeout errors for better tracking
+    if (error.details?.jobId) {
+      throw new Error(`Video generation timed out (Job ID: ${error.details.jobId}). The video may still be processing - please wait a few minutes and try again.`);
+    }
+    
+    throw new Error(`Video generation failed: ${error.message}`);
   }
 }
