@@ -28,7 +28,7 @@ export default function ScriptSegments({
   disabled,
   combinedMedia
 }) {
-  const [audioUrls, setAudioUrls] = useState({});
+  const [audioData, setAudioData] = useState({});
   const [isGenerating, setIsGenerating] = useState({});
   const [isGeneratingVideo, setIsGeneratingVideo] = useState({});
   const [error, setError] = useState(null);
@@ -49,17 +49,21 @@ export default function ScriptSegments({
     try {
       console.log('Generating audio for segment:', { index, segment });
       const api = getApiInstance();
-      const audioUrl = await api.generateSpeech(
+      const audioBlob = await api.generateSpeech(
         segment.text,
         voiceAssignments[segment.character]
       );
 
       // Cleanup previous audio URL if it exists
-      if (audioUrls[index]) {
-        URL.revokeObjectURL(audioUrls[index]);
+      if (audioData[index]?.url) {
+        URL.revokeObjectURL(audioData[index].url);
       }
 
-      setAudioUrls(prev => ({ ...prev, [index]: audioUrl }));
+      const audioUrl = URL.createObjectURL(audioBlob);
+      setAudioData(prev => ({
+        ...prev,
+        [index]: { blob: audioBlob, url: audioUrl }
+      }));
       setError(null);
     } catch (error) {
       console.error('Failed to generate speech:', error);
@@ -132,9 +136,9 @@ export default function ScriptSegments({
                           <PlayArrowIcon />
                         )}
                       </IconButton>
-                      {audioUrls[index] && (
+                      {audioData[index]?.url && (
                         <audio
-                          src={audioUrls[index]}
+                          src={audioData[index].url}
                           controls
                           style={{ height: 30 }}
                         />
@@ -142,15 +146,13 @@ export default function ScriptSegments({
                       <Button
                         variant="contained"
                         size="small"
-                        disabled={!audioUrls[index] || isGeneratingVideo[index]}
+                        disabled={!audioData[index]?.blob || isGeneratingVideo[index]}
                         onClick={async () => {
                           try {
                             setIsGeneratingVideo(prev => ({ ...prev, [index]: true }));
-                            const audioResponse = await fetch(audioUrls[index]);
-                            const audioBlob = new Blob([await audioResponse.arrayBuffer()], { type: 'audio/mpeg' });
                             const videoBlob = await generateVideoFromImage(
                               characterImage.file,
-                              audioBlob
+                              audioData[index].blob
                             );
                             const videoUrl = URL.createObjectURL(videoBlob);
                             onUpdateSegment(index, {
@@ -172,14 +174,14 @@ export default function ScriptSegments({
                           'Generate Video'
                         )}
                       </Button>
-                      {audioUrls[index] && (
+                      {audioData[index]?.url && (
                         <IconButton
                           size="small"
                           title="Download Audio"
                           onClick={() => {
                             try {
                               const link = document.createElement('a');
-                              link.href = audioUrls[index];
+                              link.href = audioData[index].url;
                               link.download = `${segment.character}-audio.mp3`;
                               document.body.appendChild(link);
                               link.click();
