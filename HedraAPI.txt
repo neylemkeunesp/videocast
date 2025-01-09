@@ -1,0 +1,33 @@
+Hedra API (0.1.0)
+
+Download OpenAPI specification:Download
+Base URL
+
+All paths are referenced from the base URL: https://mercury.dev.dream-ai.com/api
+Example usage
+1. Upload audio
+
+audio_response = requests.post(f"{BASE_URL}/v1/audio", headers={'X-API-KEY': API_KEY}, files={'file': open('audio.mp3','rb')})
+2. Upload image
+
+image_response = requests.post(f"{BASE_URL}/v1/portrait", headers={'X-API-KEY': API_KEY}, files={'file': open('img.png','rb')})
+3. Generate character video
+
+video_response = requests.post(f"{BASE_URL}/v1/characters", headers={'X-API-KEY': API_KEY}, json={"avatarImage": image_response.json()["url"], "audioSource": "audio", "voiceUrl": audio_response.json()["url"]})
+4. Call the Project endpoint to see your project / job status and get access to the URL of your generated character.
+
+project_status = requests.get(f"{BASE_URL}/v1/projects/{project_id}", headers={'X-API-KEY': API_KEY})
+Audio
+Upload audio
+Authorizations:
+APIKeyHeader
+header Parameters
+content-length	
+integer (Content-Length)
+Default: -1
+Request Body schema: multipart/form-data
+required
+file
+required
+	
+string <binary> (File) 

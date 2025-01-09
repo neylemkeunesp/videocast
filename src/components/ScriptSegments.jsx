@@ -33,7 +33,7 @@ export default function ScriptSegments({
   const [isGeneratingVideo, setIsGeneratingVideo] = useState({});
   const [error, setError] = useState(null);
 
-  const handleGenerateAudio = async (segment, index) => {
+  const handleGenerateAudio = async (segment, index, language = 'en') => {
     if (!voiceAssignments[segment.character]) {
       console.warn(`No voice assigned for character: ${segment.character}`);
       setError(`No voice assigned for character: ${segment.character}`);
@@ -47,11 +47,12 @@ export default function ScriptSegments({
 
     setIsGenerating(prev => ({ ...prev, [index]: true }));
     try {
-      console.log('Generating audio for segment:', { index, segment });
+      console.log('Generating audio for segment:', { index, segment, language });
       const api = getApiInstance();
       const audioBlob = await api.generateSpeech(
         segment.text,
-        voiceAssignments[segment.character]
+        voiceAssignments[segment.character],
+        language
       );
 
       // Cleanup previous audio URL if it exists
@@ -116,18 +117,40 @@ export default function ScriptSegments({
                     <Typography variant="subtitle2" color="primary">
                       {segment.character}
                     </Typography>
-                    <TextField
-                      fullWidth
-                      multiline
-                      variant="outlined"
-                      size="small"
-                      value={segment.text}
-                      onChange={(e) => onUpdateSegment(index, { ...segment, text: e.target.value })}
-                    />
+                    <Stack spacing={1}>
+                      <TextField
+                        fullWidth
+                        multiline
+                        variant="outlined"
+                        size="small"
+                        value={segment.text}
+                        onChange={(e) => onUpdateSegment(index, { ...segment, text: e.target.value })}
+                      />
+                      <TextField
+                        select
+                        size="small"
+                        label="Language"
+                        defaultValue="en"
+                        onChange={(e) => onUpdateSegment(index, { ...segment, language: e.target.value })}
+                        SelectProps={{
+                          native: true,
+                        }}
+                        sx={{ width: 150 }}
+                      >
+                        <option value="en">English</option>
+                        <option value="de">German</option>
+                        <option value="pl">Polish</option>
+                        <option value="es">Spanish</option>
+                        <option value="it">Italian</option>
+                        <option value="fr">French</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="hi">Hindi</option>
+                      </TextField>
+                    </Stack>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <IconButton
                         size="small"
-                        onClick={() => handleGenerateAudio(segment, index)}
+                        onClick={() => handleGenerateAudio(segment, index, segment.language || 'en')}
                         disabled={isGenerating[index] || !voiceAssignments[segment.character]}
                       >
                         {isGenerating[index] ? (
@@ -330,6 +353,7 @@ ScriptSegments.propTypes = {
     PropTypes.shape({
       character: PropTypes.string.isRequired,
       text: PropTypes.string.isRequired,
+      language: PropTypes.string,
       videoUrl: PropTypes.string,
       video: PropTypes.instanceOf(Blob)
     })
